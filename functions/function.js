@@ -1,10 +1,12 @@
 import admin from 'firebase-admin';
 
 // Inizializza Firebase Admin
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+const serviceAccount = {
+  
+};
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: process.env.FIREBASE_DATABASE_URL,
+  databaseURL: 'https://name-list-8296b-default-rtdb.europe-west1.firebasedatabase.app',
 });
 
 const db = admin.database();
