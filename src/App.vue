@@ -8,8 +8,8 @@
       <input type="text" v-model="newName">
       <button @click="db_add">ADD</button>
 
-      <p v-for="(name, key) in names" :key="key">{{ name }} <button
-          @click="db_update(key, 'Ciao Mamma')">modifica</button> <button @click="db_delete(key)">elimina</button></p>
+      <p v-for="(name, key) in names" :key="key">{{ name }} <button @click="db_update(key)">modifica</button> <button
+          @click="db_delete(key)">elimina</button></p>
 
     </div>
     <!-- Altrimenti, mostra il form di login -->
@@ -69,7 +69,6 @@ export default {
         }
       })
         .then((res) => {
-          console.log(res.data)
           this.names = res.data
         })
         .catch((error) => {
@@ -86,33 +85,46 @@ export default {
         }
       })
         .then((res) => {
-          console.log(res.data)
-          // this.names = res.data
+          if (res.data) {
+            const [[key, value]] = Object.entries(res.data);
+            this.names[key] = value
+          }
         })
         .catch((error) => {
           console.log(error)
         })
     },
     // 
-    async db_update(id, newName) {
-      axios.put('/api', { id, newName }, {
-        headers: {
-          "Authorization": this.user.idToken
+    async db_update(id) {
+      let newName = prompt("Inserisci il nuovo nome", this.names[id]).trim();
+      if (newName != null) {
+        if (newName === '') {
+          this.db_delete(id)
+        } else {
+          axios.put('/api', { id, newName }, {
+            headers: {
+              "Authorization": this.user.idToken
+            }
+          })
+            .then((res) => {
+              if (res.data) {
+                const [[key, value]] = Object.entries(res.data);
+                this.names[key] = value
+              }
+            })
+            .catch((error) => {
+              console.log(error)
+            })
         }
-      })
-        .then((res) => {
-          console.log(res.data)
-          // this.names = res.data
-        })
-        .catch((error) => {
-          console.log(error)
-        })
+      }
     },
     // 
     async db_delete(id) {
       axios.delete('/api', { data: { id }, headers: { "Authorization": this.user.idToken } })
         .then((res) => {
-          console.log(res.data)
+          if (res.data.deleted) {
+            delete this.names[res.data.deleted]
+          }
           // this.names = res.data
         })
         .catch((error) => {
