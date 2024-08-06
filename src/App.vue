@@ -1,232 +1,142 @@
 <template>
-  <div class="app">
-    <header v-if="user">
-      <h1>{{ user.name }}</h1>
+  <div>
+    <!-- Se l'utente è autenticato, mostra UID, email e il pulsante di logout -->
+    <div v-if="user">
+      <p>Email: {{ user.email }}</p>
       <button @click="logout">Logout</button>
-    </header>
+      <br>
+      <input type="text" v-model="newName">
+      <button @click="db_add">ADD</button>
 
-    <div v-if="!user" class="auth-container">
-      <div v-if="!isRegistering">
-        <h2>Login</h2>
-        <form @submit.prevent="login">
-          <input v-model="loginEmail" type="email" placeholder="Email" required />
-          <input v-model="loginPassword" type="password" placeholder="Password" required />
-          <button type="submit">Login</button>
-          <p>Don't have an account? <a @click="toggleRegistering">Register here</a></p>
-        </form>
-      </div>
-      
-      <div v-else>
-        <h2>Register</h2>
-        <form @submit.prevent="register">
-          <input v-model="registerEmail" type="email" placeholder="Email" required />
-          <input v-model="registerPassword" type="password" placeholder="Password" required />
-          <button type="submit">Register</button>
-          <p>Already have an account? <a @click="toggleRegistering">Login here</a></p>
-        </form>
-      </div>
+      <p v-for="(name, key) in names" :key="key">{{ name }} <button
+          @click="db_update(key, 'Ciao Mamma')">modifica</button> <button @click="db_delete(key)">elimina</button></p>
+
     </div>
-
-    <main v-if="user">
-      <div v-if="Object.keys(names).length">
-        <ul>
-          <li v-for="(name, id) in names" :key="id">
-            <span>{{ name }}</span>
-            <button @click="editName(id)">Edit</button>
-            <button @click="deleteName(id)">Delete</button>
-          </li>
-        </ul>
-      </div>
-      <div v-else>
-        <p>No names available.</p>
-      </div>
-
-      <input v-model="newName" placeholder="Enter name" />
-      <button @click="addName">Add Name</button>
-    </main>
+    <!-- Altrimenti, mostra il form di login -->
+    <div v-else>
+      <input v-model="email" type="email" placeholder="Email" />
+      <input v-model="password" type="password" placeholder="Password" />
+      <button @click="login()">Login</button>
+    </div>
   </div>
 </template>
 
 <script>
-import { auth } from './firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import axios from 'axios';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 
 export default {
   data() {
     return {
-      user: null,
-      names: {},
+      email: '',
+      password: '',
+      user: null, // Stato per memorizzare l'utente autenticato
       newName: '',
-      loginEmail: '',
-      loginPassword: '',
-      registerEmail: '',
-      registerPassword: '',
-      isRegistering: false,
+      names: {},
     };
   },
-  async mounted() {
-    this.checkUser();
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        this.user = {
-          name: user.email || 'User',
-          id: user.uid,
-        };
-        this.fetchNames();
-      } else {
-        this.user = null;
-        this.names = {};
-      }
-    });
-  },
   methods: {
-    async checkUser() {
-      const user = auth.currentUser;
-      if (user) {
-        this.user = {
-          name: user.email || 'User',
-          id: user.uid,
-        };
-        this.fetchNames();
-      }
-    },
-    async fetchNames() {
-      if (this.user) {
-        try {
-          const response = await axios.get('/api', {
-            params: { userId: this.user.id },
-          });
-          this.names = response.data;
-        } catch (error) {
-          console.error('Error fetching names:', error);
-        }
-      }
-    },
-    async addName() {
-      if (!this.newName.trim()) {
-        alert('Name cannot be empty');
-        return;
-      }
-
-      try {
-        const newId = Date.now().toString();
-        await axios.post('/api', {
-          id: newId,
-          name: this.newName,
-        }, {
-          params: { userId: this.user.id },
-        });
-        this.names = { ...this.names, [newId]: this.newName };
-        this.newName = '';
-      } catch (error) {
-        console.error('Error adding name:', error);
-      }
-    },
-    async editName(id) {
-      const newName = prompt('Enter new name:');
-      if (!newName || !newName.trim()) {
-        alert('Name cannot be empty');
-        return;
-      }
-
-      try {
-        await axios.put('/api', {
-          id,
-          name: newName,
-        }, {
-          params: { userId: this.user.id },
-        });
-        this.names = { ...this.names, [id]: newName };
-      } catch (error) {
-        console.error('Error updating name:', error);
-      }
-    },
-    async deleteName(id) {
-      try {
-        await axios.delete('/api', {
-          data: { id },
-          params: { userId: this.user.id },
-        });
-        const { [id]: _, ...remainingNames } = this.names;
-        this.names = remainingNames;
-      } catch (error) {
-        console.error('Error deleting name:', error);
-      }
-    },
+    // Metodo per eseguire il login
     async login() {
+      const auth = getAuth();
       try {
-        await signInWithEmailAndPassword(auth, this.loginEmail, this.loginPassword);
-        this.loginEmail = '';
-        this.loginPassword = '';
+        const userCredential = await signInWithEmailAndPassword(auth, this.email, this.password);
+        const idToken = await userCredential.user.getIdToken();
+        this.user = {
+          idToken,
+          email: userCredential.user.email
+        };
+        // await this.getData();
       } catch (error) {
-        console.error('Error logging in:', error);
-        alert('Login failed. Please check your credentials.');
+        console.error('Login failed', error);
       }
     },
-    async register() {
-      try {
-        await createUserWithEmailAndPassword(auth, this.registerEmail, this.registerPassword);
-        this.registerEmail = '';
-        this.registerPassword = '';
-        this.toggleRegistering(); // Switch to login form after registration
-      } catch (error) {
-        console.error('Error registering:', error);
-        alert('Registration failed. Please try again.');
-      }
-    },
+    // Metodo per eseguire il logout
     async logout() {
+      const auth = getAuth();
       try {
         await signOut(auth);
         this.user = null;
-        this.names = {};
       } catch (error) {
-        console.error('Error signing out:', error);
+        console.error('Logout failed', error);
       }
     },
-    toggleRegistering() {
-      this.isRegistering = !this.isRegistering;
-    }
-  }
+    // 
+    async getData() {
+      axios.post('/api/getData', {}, {
+        headers: {
+          "Authorization": this.user.idToken
+        }
+      })
+        .then((res) => {
+          console.log(res.data)
+          this.names = res.data
+        })
+        .catch((error) => {
+          console.log(error)
+        })
+    },
+    // 
+    async db_add() {
+      const name = this.newName;
+      this.newName = ''
+      axios.post('/api/add', { name }, {
+        headers: {
+          "Authorization": this.user.idToken
+        }
+      })
+        .then((res) => {
+          console.log(res.data)
+          // this.names = res.data
+        })
+        .catch((error) => {
+          console.log(error)
+        })
+    },
+    // 
+    async db_update(id, newName) {
+      axios.put('/api', { id, newName }, {
+        headers: {
+          "Authorization": this.user.idToken
+        }
+      })
+        .then((res) => {
+          console.log(res.data)
+          // this.names = res.data
+        })
+        .catch((error) => {
+          console.log(error)
+        })
+    },
+    // 
+    async db_delete(id) {
+      axios.delete('/api', { data: { id }, headers: { "Authorization": this.user.idToken } })
+        .then((res) => {
+          console.log(res.data)
+          // this.names = res.data
+        })
+        .catch((error) => {
+          console.log(error)
+        })
+    },
+
+  },
+  // Hook per monitorare lo stato di autenticazione dell'utente
+  mounted() {
+    const auth = getAuth();
+    console.log(auth);
+
+    onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        this.user = {
+          idToken: currentUser.accessToken,
+          email: currentUser.email
+        };
+        await this.getData();
+      } else {
+        this.user = null;
+      }
+    });
+  },
 };
 </script>
-
-<style>
-.app {
-  font-family: Arial, sans-serif;
-  color: #007bff;
-  padding: 20px;
-}
-
-header {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-header h1 {
-  font-size: 2em;
-  margin: 0;
-}
-
-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-input {
-  margin: 10px;
-  padding: 5px;
-}
-
-button {
-  margin: 5px;
-  padding: 5px 10px;
-}
-
-.auth-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-</style>
