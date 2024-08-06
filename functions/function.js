@@ -36,9 +36,7 @@ admin.initializeApp({
 const db = admin.database();
 
 exports.handler = async function (event, context) {
-
-  router.start(event);
-
+  await router.start(event);
   // AUTH route
   const user = await dbFirebase.auth(router.authToken);
   if (user) {
@@ -48,36 +46,36 @@ exports.handler = async function (event, context) {
       router.setRes(names);
     })
 
-    await router.POST('add', async () => {
-      const data = router.bodyParams.name
+    await router.POST('a', async () => {
+      let { id, ...data } = router.bodyParams
       if (data) {
-        const name = await dbFirebase.add(data);
+        const name = await dbFirebase.add(data, router.pathParams, id);
         router.setRes(name);
       } else {
         router.error();
       }
     })
 
-    await router.PUT('', async () => {
-      const { id, newName: newData } = router.bodyParams
-      if (id && newData) {
-        const name = await dbFirebase.update(id, newData);
+    await router.PUT('u', async () => {
+      const { id, ...data } = router.bodyParams
+      if (id && data) {
+        const name = await dbFirebase.update(id, data, router.pathParams);
         router.setRes(name);
       } else {
         router.error();
       }
     })
 
-    await router.DELETE('', async () => {
+    await router.DELETE('d', async () => {
       const id = router.bodyParams.id
       if (id) {
-        const res = await dbFirebase.delete(id);
+        const res = await dbFirebase.delete(id, router.pathParams);
         router.setRes(res);
       }
     })
   }
-
   return router.sendRes()
+
 };
 
 const dbFirebase = {
@@ -102,17 +100,50 @@ const dbFirebase = {
     const snapshot = await db.ref(`${this.dbName}/${this.user.uid}`).once('value');
     return snapshot.val() || {};
   },
-  async add(data) {
-    const id = this.newId();
-    await db.ref(`${this.dbName}/${this.user.uid}/${id}`).set(data);
+  async add(data, pathParams = [], id = false) {
+    let dbPath = '';
+    if (pathParams.length >= 2) {
+      for (let index = 1; index < pathParams.length; index++) {
+        dbPath += '/' + pathParams[index];
+      }
+    }
+    let newId;
+    if (id === true) {
+      newId = '/' + this.newId();
+    } else if (id === false) {
+      newId = ''
+    } else {
+      newId = '/' + id
+    }
+    await db.ref(`${this.dbName}/${this.user.uid + dbPath + newId}`).set(data);
+    if (newId !== '') {
+      return { [newId.substring(1)]: data };
+    }
+    return data;
+  },
+
+  async update(id, data, pathParams = []) {
+    let dbPath = '';
+    if (pathParams.length >= 2) {
+      for (let index = 1; index < pathParams.length; index++) {
+        dbPath += '/' + pathParams[index];
+      }
+    }
+    console.log(`${this.dbName}/${this.user.uid + dbPath}`);
+
+    await db.ref(`${this.dbName}/${this.user.uid + dbPath}`).update({ [id]: data });
     return { [id]: data };
   },
-  async update(id, newData) {
-    await db.ref(`${this.dbName}/${this.user.uid}`).update({ [id]: newData });
-    return { [id]: newData };
-  },
-  async delete(id) {
-    await db.ref(`${this.dbName}/${this.user.uid}/${id}`).remove();
+
+  async delete(id, pathParams = []) {
+    let dbPath = '';
+    if (pathParams.length >= 2) {
+      for (let index = 1; index < pathParams.length; index++) {
+        dbPath += '/' + pathParams[index];
+      }
+    }
+
+    await db.ref(`${this.dbName}/${this.user.uid + dbPath}/${id}`).remove();
     return { deleted: id };
   },
   newId() {
@@ -145,15 +176,26 @@ const router = {
   // contiene tutti i body parems 
   bodyParams: null,
 
+  // conta le chiamata ricevute per debugging
+  callCounter: 0,
+
+  // contiene se presente nell header l'autentication il JWT
   authToken: null,
 
   // metodo OBLIGATORIO per inizializzare le variabili ricavate dallévento della chiamata
-  start(event) {
+  async start(event) {
+    this.callCounter++ // debugging
+    let attesa = 0 // debugging
+    while (this.event) {
+      attesa++ // debugging
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    console.log(`Call ${this.callCounter}: ${event.httpMethod} ${event.path} => attesa totale fine chiamata precedente ms:${attesa * 10}`); // debugging
     this.event = event
     this.stateError = false;
     this.statusCode = 200;
     this.bodyParams = null;
-    this.authToken = event.headers.authorization || null;
+    this.authToken = this.event.headers.authorization || null;
 
     this.clearRes();
 
@@ -207,6 +249,7 @@ const router = {
 
   // metodo OBBLIGATORIO per inviare la risposta
   sendRes() {
+    this.event = null;
     if (this.response === null) {
       this.error();
     }
@@ -243,7 +286,6 @@ const router = {
     } else {
       return false
     }
-
   },
 
   // metodo per settare la mia var bodyParams con un oggetto contenete tutti i parametri del body
@@ -251,7 +293,6 @@ const router = {
     if (this.event.body) {
       this.bodyParams = JSON.parse(this.event.body)
     }
-
   },
 
   // controllo dell'evento della chiamata e esegue la funzione richesta

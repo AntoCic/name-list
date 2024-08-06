@@ -5,6 +5,7 @@ import { getAuth } from 'firebase/auth';
 // Your web app's Firebase configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDwX1F_eUAuMJtxykaSV-h3CeuMqkXuofs",
+    authDomain: "name-list-8296b.firebaseapp.com",
 };
 
 // Initialize Firebase
